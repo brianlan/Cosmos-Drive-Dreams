@@ -40,7 +40,7 @@ Post-training a Cosmos-Transfer-LidarGen model allows you to fine-tune the model
 
 ### Dataset Preparation
 
-You must provide synchronized multi-view RGB images and LiDAR point cloud data in a compatible format. The dataset should be organized as follows:
+You must provide synchronized multi-view RGB images and LiDAR point cloud data in a compatible format. Please check our conversion [script](../cosmos-drive-dreams-toolkits/convert_lidar_pointcloud_to_rangemap.py) for reference. The dataset should be organized as follows:
 
 ```
 datasets/lidar_dataset_release/
@@ -157,6 +157,6 @@ The Cosmos-Transfer-LidarGen diffusion model is built on the following architect
   - Ensure sufficient GPU memory (recommend 80GB+ per GPU)
 
 - **Dataset Requirements**
-    - Minimum Dataset Size: 10,000+ synchronized RGB-LiDAR pairs recommended
+    - Dataset Size: 100,000+ synchronized RGB-LiDAR clips (20 sec / each) are recommended
     - View Coverage: Ensure good coverage of different scenarios and environments
     - Calibration: Accurate camera-LiDAR calibration is crucial for quality results
