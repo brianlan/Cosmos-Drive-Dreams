@@ -43,6 +43,7 @@ pip install jaxtyping kaleido pyquaternion av lru-dict OpenEXR==3.2.3 plotly ope
     from huggingface_hub import snapshot_download
     snapshot_download(repo_id="nvidia/Cosmos-Transfer-LidarGen-Example",local_dir="datasets",repo_type="dataset")
     ```
+4. To create your own datasets, please refer to our [reference script](../cosmos-drive-dreams-toolkits/convert_lidar_pointcloud_to_rangemap.py) to convert raw lidar point cloud to range map data. 
 
 ## LiDAR Tokenizer
 
