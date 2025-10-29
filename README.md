@@ -13,9 +13,16 @@ We open-source our **model weights**, **pipeline toolkits**, and a **dataset** (
 <video controls autoplay loop src=https://github.com/user-attachments/assets/af926ed2-6f93-4e9d-8afe-95095792e8d8></video>
 
 ## News
-- 2025-10-29: **World Scenario Rendering** feature added to toolkits! This enhanced rendering mode (introduced in Cosmos-Transfer 2.5) provides high-fidelity 3D geometry-based control signals with rich laneline patterns, depth gradients, and improved visual quality compared to traditional HDMap rendering. See [toolkits README](cosmos-drive-dreams-toolkits/README.md#world-scenario-rendering-new-in-cosmos-transfer25-2bauto) for details.
+- 2025-10-29: **World Scenario Rendering** feature added to toolkits! This enhanced rendering mode (used in [Cosmos-Transfer 2.5](https://github.com/nvidia-cosmos/cosmos-transfer2.5)) provides high-fidelity 3D geometry-based control signals with rich laneline and bounding box patterns compared to traditional HDMap rendering. See [toolkits README](cosmos-drive-dreams-toolkits/README.md#world-scenario-rendering-new-in-cosmos-transfer25-2bauto) for details.
 - 2025-10-22: [Data preprocessing](cosmos-drive-dreams-toolkits/convert_lidar_pointcloud_to_rangemap.py), post-training and inference scripts of lidar tokenizer and diffuison [models](cosmos-transfer-lidargen/README.md) are released ! See [Huggingface](https://huggingface.co/collections/nvidia/cosmos-drive-dreams-68f5ea17febabd25282767fd) for our model cards. 
 - 2025-06-10: Model, Toolkits, and Dataset (including cosmos-generated video, HDMap, and LiDAR) are released! Stay tuned for the paired GT RGB videos. 
+
+
+
+https://github.com/user-attachments/assets/43c5b921-ef23-4d5d-8ab4-2a7a58a0cb77
+<p align="center">
+    Condition Videos: HDMap / LiDAR Depth / World Scenario
+</p>
 
 
 ## Cosmos-Drive Open-source Summary
