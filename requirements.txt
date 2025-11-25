@@ -43,3 +43,4 @@ viser @ git+https://github.com/yifanlu0227/viser.git
 python-pycg
 ray[default]
 shapely
+moderngl
