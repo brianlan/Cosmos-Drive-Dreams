@@ -121,6 +121,24 @@ def download_files(rel_paths: list[str], odir: str, clean_cache: bool, num_worke
     return succ == len(rel_paths)
 
 
+def apply_limit(rel_paths: list[str], limit: int | None) -> list[str]:
+    """Keep only files from the first N unique examples (matched by base filename)."""
+    if limit is None:
+        return rel_paths
+    
+    basename_to_files = {}
+    for path in rel_paths:
+        filename = path.split('/')[-1]
+        basename = filename.rsplit('.', 1)[0] if '.' in filename else filename
+        basename_to_files.setdefault(basename, []).append(path)
+    
+    if not basename_to_files:
+        return rel_paths[:limit * 10]
+    
+    selected_basenames = sorted(basename_to_files.keys())[:limit]
+    return [f for basename in selected_basenames for f in basename_to_files[basename]]
+
+
 def parse_args():
     p = argparse.ArgumentParser("Cosmos-Drive-Dreams downloader (parallel)")
     p.add_argument("--odir", required=True, help="Output directory")
@@ -136,6 +154,12 @@ def parse_args():
         help="Parallel download threads (default 1)",
     )
     p.add_argument("--clean_cache", action="store_true", help="Delete HF cache after download")
+    p.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Limit download to first N examples (for lightweight testing)",
+    )
     return p.parse_args()
 
 
@@ -160,6 +184,12 @@ def main():
         return
 
     rel_paths = list_files(DATASET_REPO, sorted(folders))
+    
+    if args.limit:
+        original_count = len(rel_paths)
+        rel_paths = apply_limit(rel_paths, args.limit)
+        print(f"Will download {args.limit} examples: {len(rel_paths)} files (from {original_count} total)")
+    
     ok = download_files(rel_paths, args.odir, args.clean_cache, args.workers)
     print("\nDownload complete." if ok else "\nDownload finished with errors.")
 
