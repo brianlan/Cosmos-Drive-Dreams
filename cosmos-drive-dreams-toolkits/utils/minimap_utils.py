@@ -50,7 +50,7 @@ def get_type_from_name(minimap_name):
     """
     Args:
         minimap_name: str, name of the minimap
-    
+
     Returns:
         minimap_type: str, type of the minimap
     """
@@ -65,11 +65,11 @@ def cuboid3d_to_polyline(cuboid3d_eight_vertices):
     Convert cuboid3d to polyline
 
     Args:
-        cuboid3d_eight_vertices: np.ndarray, shape (8, 3), dtype=np.float32, 
+        cuboid3d_eight_vertices: np.ndarray, shape (8, 3), dtype=np.float32,
             eight vertices of the cuboid3d
-    
+
     Returns:
-        polyline: np.ndarray, shape (N, 3), dtype=np.float32, 
+        polyline: np.ndarray, shape (N, 3), dtype=np.float32,
             polyline vertices
     """
     if isinstance(cuboid3d_eight_vertices, list):
@@ -90,9 +90,9 @@ def simplify_minimap(minimap_wds_file):
     Returns:
         minimap_data_wo_meta_info: list of list of 3d points
             containing extracted minimap data, it represents a polyline or polygon
-            [[[x, y, z], [x, y, z], ...]], 
+            [[[x, y, z], [x, y, z], ...]],
             [[[x, y, z], [x, y, z], ...]], ...]
-    
+
         -> minimap can be polygons, e.g., crosswalks, road_markings
         -> minimap can be polylines, e.g., lanelines, lanes, road_boundaries, wait_lines, poles
         -> minimap can be cuboid3d, e.g., traffic_signs, traffic_lights
@@ -136,9 +136,9 @@ def create_minimap_projection(
         minimap_data_wo_meta_info: list of np.ndarray, results from simplify_minimap
         camera_poses: np.ndarray, shape (N, 4, 4), dtype=np.float32, camera poses of N frames
         camera_model: CameraModel, camera model
-            
+
     Returns:
-        minimaps_projection: np.ndarray, 
+        minimaps_projection: np.ndarray,
             shape (N, H, W, 3), dtype=np.uint8, projected minimap data across N frames
     """
     MINIMAP_TO_RGB = json.load(open(Path(__file__).parent.parent / 'config' /'hdmap_color_config.json'))['hdmap']
@@ -175,21 +175,21 @@ def create_minimap_projection(
         )
     else:
         raise ValueError(f"Invalid minimap type: {minimap_type}")
-    
+
     return projection_images
 
 
 def cuboid3d_update_vertices_remove_others(cuboid3d):
     """
-    This is specific to the cuboid3d label of traffic_signs and traffic_lights. 
+    This is specific to the cuboid3d label of traffic_signs and traffic_lights.
 
     Args:
         cuboid3d: dict
             {
-                'center': {'x': 180.09763, 'y': 83.11682, 'z': -16.458818},  
+                'center': {'x': 180.09763, 'y': 83.11682, 'z': -16.458818},
                 'orientation': {'x': -0.071179695, 'y': 0.0033680226, 'z': -0.36912337}, # yaw, pitch, roll
                 'dimensions': {'x': 0.01, 'y': 0.64360946, 'z': 0.7865788}, # length, width, height
-                'vertices': [{}, {}, {}, {}, {}, {}, {}, {}] # usually missing, 
+                'vertices': [{}, {}, {}, {}, {}, {}, {}, {}] # usually missing,
             }
 
     Returns:
@@ -215,7 +215,7 @@ def cuboid3d_update_vertices_remove_others(cuboid3d):
     yaw, pitch, roll = cuboid3d['orientation']['x'], cuboid3d['orientation']['y'], cuboid3d['orientation']['z']
     rotation_matrix = R.from_euler('ZYX', [yaw, pitch, roll]).as_matrix()
 
-    # Apply rotation. 
+    # Apply rotation.
     vertices_of_cuboid = (rotation_matrix @ vertices_of_cuboid.T).T
 
     # Add center translation
@@ -228,16 +228,16 @@ def cuboid3d_update_vertices_remove_others(cuboid3d):
     cuboid3d.pop('orientation', None)
     cuboid3d.pop('dimensions', None)
 
-    return cuboid3d 
+    return cuboid3d
 
 
 def convert_cuboid3d_recursive(minimap_message):
     """
     Recursively traverse minimap_message and update any cuboid3d entries with vertices.
-    
+
     Args:
         minimap_message: dict/list, potentially nested structure that may contain cuboid3d entries
-        
+
     Returns:
         Updated minimap_message with cuboid3d entries converted to include vertices
     """
@@ -248,11 +248,11 @@ def convert_cuboid3d_recursive(minimap_message):
         # Recursively process all dict values
         for key in minimap_message:
             minimap_message[key] = convert_cuboid3d_recursive(minimap_message[key])
-            
+
     elif isinstance(minimap_message, list):
         # Recursively process all list items
         minimap_message = [convert_cuboid3d_recursive(item) for item in minimap_message]
-        
+
     return minimap_message
 
 
@@ -261,10 +261,10 @@ def transform_decoded_label(decoded_label, transformation_matrix):
     Apply transformation matrix to decoded label
 
     Args:
-        decoded_label: dict, 
-            decoded label from decode_static_label, can have several hierarchies, 
+        decoded_label: dict,
+            decoded label from decode_static_label, can have several hierarchies,
             but the last one is always numpy array with shape [N, 3]
-        transformation_matrix: 4x4 numpy array, 
+        transformation_matrix: 4x4 numpy array,
             transformation matrix we want to apply to the numpy array
     Returns:
         dict: transformed decoded_label with the same structure, but numpy array transformed
@@ -285,7 +285,7 @@ def transform_decoded_label(decoded_label, transformation_matrix):
         vertices = np.hstack((vertices, np.ones((vertices.shape[0], 1))))
         transformed_vertices = np.dot(transformation_matrix, vertices.T).T
         return transformed_vertices[:, :3]
-    
+
     # recursively apply transformation matrix to the vertices
     def transform(decoded_label, transformation_matrix):
         if isinstance(decoded_label, np.ndarray):
@@ -297,7 +297,7 @@ def transform_decoded_label(decoded_label, transformation_matrix):
             return transformed_label
         else:
             raise ValueError(f"Unknown type in decoded_label: {type(decoded_label)}")
-        
+
     return transform(decoded_label, transformation_matrix)
 
 
@@ -354,7 +354,7 @@ def create_minimap_geometry_objects_from_data(
 
             all_line_segments = np.concatenate(line_segment_list, axis=0) # [N', 2, 3]
             xy_and_depth = camera_model.get_xy_and_depth(all_line_segments.reshape(-1, 3), camera_pose).reshape(-1, 2, 3) # [N', 3]
-            
+
             # filter the line segments with both vertices have depth >= 0
             valid_line_segment_vertices = xy_and_depth[:, :, 2] >= 0
             valid_line_segment_indices = np.all(valid_line_segment_vertices, axis=1)
@@ -405,7 +405,7 @@ def create_minimap_geometry_objects_from_data(
                 polygon_xy_and_depth = all_xy_and_depth[start_idx:start_idx+vertex_count]
                 start_idx += vertex_count
                 color_float = np.array(minimap_to_rgb[minimap_name]) / 255.0
-                
+
                 if minimap_name == 'crosswalks':
                     triangles_proj = polygon_xy_and_depth.reshape(-1, 3, 3)
                     # Filter out triangles that are completely behind camera
@@ -435,24 +435,44 @@ def prepare_traffic_light_status_data(
 ):
     """
     Preload traffic light position and per-frame status data.
-    
+
     Args:
         traffic_light_position_wds_file: str, path to the webdataset file containing traffic light position data
         traffic_light_per_frame_status_wds_file: str, path to the webdataset file containing traffic light per-frame status data
-        traffic_light_color_version: str, version of traffic light colors
 
     Returns:
-        tuple: (position_list, status_dict, tl_status_to_rgb) or (position_list, None, tl_status_to_rgb) if unavailable.
+        tuple: (position_list, status_dict, tl_status_to_rgb)
+            - position_list: list[dict] or None if file doesn't exist
+            - status_dict: dict or None if file doesn't exist or unavailable
+            - tl_status_to_rgb: dict, always returned
     """
-    traffic_light_position_sample = get_sample(traffic_light_position_wds_file)
     tl_status_to_rgb = json.load(open(Path(__file__).parent.parent / 'config' /'world_scenario_color_config.json'))['traffic_lights']
+
+    # Check if traffic light position file exists
+    if not os.path.exists(traffic_light_position_wds_file):
+        return None, None, tl_status_to_rgb
+
+    try:
+        traffic_light_position_sample = get_sample(traffic_light_position_wds_file)
+        position_list = traffic_light_position_sample['traffic_lights.json']['labels']
+    except (KeyError, StopIteration, FileNotFoundError) as e:
+        # File exists but is empty or malformed
+        return None, None, tl_status_to_rgb
+
+    # Check if traffic light status file exists
     if not os.path.exists(traffic_light_per_frame_status_wds_file):
-        return traffic_light_position_sample['traffic_lights.json']['labels'], None, tl_status_to_rgb
-    traffic_light_per_frame_status_sample = get_sample(traffic_light_per_frame_status_wds_file)
+        return position_list, None, tl_status_to_rgb
+
+    try:
+        traffic_light_per_frame_status_sample = get_sample(traffic_light_per_frame_status_wds_file)
+        status_dict = traffic_light_per_frame_status_sample['aggregated_states.json']['traffic_light_states']
+    except (KeyError, StopIteration, FileNotFoundError) as e:
+        # File exists but is empty or malformed
+        return position_list, None, tl_status_to_rgb
 
     return (
-        traffic_light_position_sample['traffic_lights.json']['labels'],
-        traffic_light_per_frame_status_sample['aggregated_states.json']['traffic_light_states'],
+        position_list,
+        status_dict,
         tl_status_to_rgb,
     )
 
@@ -467,7 +487,7 @@ def create_traffic_light_status_geometry_objects_from_data(
 ):
     """
     Build geometry objects (Polygon2D) for traffic lights for a single frame.
-    
+
     Args:
         traffic_light_position_list: list[dict], traffic light position data
         traffic_light_per_frame_status_dict: dict[str, dict], traffic light per-frame status data
@@ -503,7 +523,7 @@ def create_traffic_light_status_geometry_objects_from_data(
             ) # [16, 3]
         )
         polygon_colors.append(signal_render_color)
-    
+
     # projecting all points together to save time
     all_polygon_vertices = np.concatenate(polygon_vertices, axis=0) # [N * 16, 3]
     all_xy_and_depth = camera_model.get_xy_and_depth(all_polygon_vertices, camera_pose) # [N * 16, 3]
