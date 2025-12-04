@@ -22,7 +22,7 @@ from termcolor import cprint, colored
 from pathlib import Path
 from utils.wds_utils import get_sample
 from utils.bbox_utils import (
-    create_bbox_projection, interpolate_bbox, fix_static_objects, 
+    create_bbox_projection, interpolate_bbox, fix_static_objects,
     create_bbox_geometry_objects_for_frame, build_per_vertex_color_map_for_world_scenario,
 )
 from utils.minimap_utils import (
@@ -37,7 +37,7 @@ from utils.camera.ftheta import FThetaCamera
 from utils.ray_utils import ray_remote, wait_for_futures
 from utils.graphics_utils import render_geometries
 
-USE_RAY = True
+USE_RAY = os.environ.get('USE_RAY', 'True').lower() == 'true'
 
 def get_nearest_lidar_indices(high_indices, step=3):
     low_indices = []
@@ -71,7 +71,7 @@ def prepare_input(input_root, clip_id, settings, camera_type, post_training, res
     """
     INPUT_POSE_FPS = settings['INPUT_POSE_FPS']
 
-    if post_training: 
+    if post_training:
         TARGET_RENDER_FPS = settings['POST_TRAINING']['TARGET_RENDER_FPS']
         TARGET_CHUNK_FRAME = settings['POST_TRAINING']['TARGET_CHUNK_FRAME']
         OVERLAP_FRAME = settings['POST_TRAINING']['OVERLAP_FRAME']
@@ -138,7 +138,7 @@ def prepare_input(input_root, clip_id, settings, camera_type, post_training, res
                 cprint(f"Ftheta intrinsic file does not exist: {intrinsic_file}", 'red')
                 cprint(f"===> So we will use default ftheta intrinsic for rendering", 'yellow', attrs=['bold'])
                 intrinsic_file = 'assets/default_ftheta_intrinsic.tar'
-                camera_name_in_rds_hq = settings['CAMERAS_TO_RDS_HQ'][camera_name]    
+                camera_name_in_rds_hq = settings['CAMERAS_TO_RDS_HQ'][camera_name]
                 intrinsic_data = get_sample(intrinsic_file)
                 intrinsic_this_cam = intrinsic_data[f"{camera_type}_intrinsic.{camera_name_in_rds_hq}.npy"]
 
@@ -157,15 +157,15 @@ def prepare_input(input_root, clip_id, settings, camera_type, post_training, res
     return camera_name_to_camera_poses, render_frame_ids, all_object_info, camera_name_to_camera_model
 
 def prepare_output(
-        full_video, 
-        render_frame_ids, 
-        render_name, 
-        settings, 
-        output_root, 
-        clip_id, 
-        camera_name, 
-        resize_resolution, 
-        cosmos_resolution, 
+        full_video,
+        render_frame_ids,
+        render_name,
+        settings,
+        output_root,
+        clip_id,
+        camera_name,
+        resize_resolution,
+        cosmos_resolution,
         post_training,
         camera_type
     ):
@@ -182,7 +182,7 @@ def prepare_output(
         camera_name: the name of the camera
         camera_type: the type of camera model, 'pinhole' or 'ftheta'
     """
-    if post_training: 
+    if post_training:
         TARGET_RENDER_FPS = settings['POST_TRAINING']['TARGET_RENDER_FPS']
         TARGET_CHUNK_FRAME = settings['POST_TRAINING']['TARGET_CHUNK_FRAME']
         OVERLAP_FRAME = settings['POST_TRAINING']['OVERLAP_FRAME']
@@ -281,15 +281,15 @@ def render_sample_hdmap(
         minimaps_projection_merged = np.maximum(minimaps_projection_merged, bounding_box_projection)
 
         prepare_output(
-            minimaps_projection_merged, 
-            render_frame_ids, 
-            'hdmap', 
+            minimaps_projection_merged,
+            render_frame_ids,
+            'hdmap',
             settings,
-            output_root, 
-            clip_id, 
-            camera_name, 
-            resize_resolution, 
-            cosmos_resolution, 
+            output_root,
+            clip_id,
+            camera_name,
+            resize_resolution,
+            cosmos_resolution,
             post_training,
             camera_type
         )
@@ -306,7 +306,7 @@ def render_sample_world_scenario(
     novel_pose_folder: str = None,
     resize_resolution: tuple[int, int] = (1280, 720),
     cosmos_resolution: tuple[int, int] = (1280, 704)
-): 
+):
     """
     world scenario is an improved version of hdmap condition. It is introduced in Cosmos-Transfer 2.5
     """
@@ -333,6 +333,7 @@ def render_sample_world_scenario(
         processed_lanelines = prepare_laneline_type_geometry_data(
             os.path.join(input_root, '3d_lanelines', f"{clip_id}.tar")
         )
+
         tl_position_list, tl_status_dict, tl_status_to_rgb = prepare_traffic_light_status_data(
             os.path.join(input_root, '3d_traffic_lights', f"{clip_id}.tar"),
             os.path.join(input_root, '3d_traffic_lights_status', f"{clip_id}.tar"),
@@ -407,15 +408,15 @@ def render_sample_world_scenario(
         combined_projection = np.stack(combined_frames, axis=0)
 
         prepare_output(
-            combined_projection, 
-            render_frame_ids, 
-            'world_scenario', 
+            combined_projection,
+            render_frame_ids,
+            'world_scenario',
             settings,
-            output_root, 
-            clip_id, 
-            camera_name, 
-            resize_resolution, 
-            cosmos_resolution, 
+            output_root,
+            clip_id,
+            camera_name,
+            resize_resolution,
+            cosmos_resolution,
             post_training,
             camera_type
         )
@@ -471,7 +472,7 @@ def render_sample_lidar(
                 lidar_points = lidar_data[f'{low_fps_frame_indices[i]:06d}.lidar_raw.npz']['xyz'].astype(np.float32).reshape(-1, 3)
 
                 distances = np.linalg.norm(lidar_points, axis=1)
-                threshold = 3.0  
+                threshold = 3.0
                 lidar_points = lidar_points[distances >= threshold]
                 lidar_to_world = lidar_data[f'{low_fps_frame_indices[i]:06d}.lidar_raw.npz']['lidar_to_world']
                 lidar_points_world = (lidar_to_world @ np.concatenate([lidar_points, np.ones([lidar_points.shape[0], 1])], axis=1).T).T[:, :3]
@@ -509,7 +510,7 @@ def render_sample_lidar(
                 center_only=False,
                 is_ftheta=(camera_type == 'ftheta'),
                 expanded_kernel=4
-            )            
+            )
             depth = depth.squeeze(0).squeeze(0).cpu().numpy()
             lidar_depth_list.append(depth)
         lidar_depth = np.stack(lidar_depth_list, axis=0) # T, H, W
@@ -561,7 +562,7 @@ def render_sample_rgb(
         # load all frames
         vr = decord.VideoReader(rgb_file)
         all_frames = vr.get_batch(frame_idx_in_gt_video).asnumpy()
-        
+
         prepare_output(
             all_frames,
             frame_idx_in_gt_video,
@@ -575,7 +576,7 @@ def render_sample_rgb(
             post_training,
             camera_type
         )
-            
+
 @click.command()
 @click.option("--input_root", '-i', type=str, help="the root folder of RDS-HQ or RDS-HQ format dataset")
 @click.option("--clip_id_json", "-cj", type=str, default=None, help="exact clip id or path to the clip id json file. If provided, we just render the clips in the json file.")
