@@ -17,6 +17,14 @@
 
 We provide comprehensive examples to illustrate how to perform inference and post-training with Cosmos-Transfer-LidarGen models.
 
+### Post-training Workflow
+
+To post-train Cosmos-Transfer-LidarGen models on your own data, follow this workflow:
+
+1. **Prepare Datasets**: Convert your raw LiDAR point cloud and multi-view RGB data into our required format (see [Dataset Preparation](#dataset-preparation) below)
+2. **Post-train LiDAR Tokenizer**: Fine-tune the tokenizer on your LiDAR data following [lidar_tokenizer.md](examples/lidar_tokenizer.md)
+3. **Post-train Diffusion Model**: Fine-tune the RGB-to-LiDAR generation model following [lidar_diffusion.md](examples/lidar_diffusion.md)
+
 ### Installation
 
 Please refer to [INSTALL.md](INSTALL.md) for general instructions on environment setup.
@@ -31,19 +39,63 @@ plotly_get_chrome
 pip install jaxtyping kaleido pyquaternion av lru-dict OpenEXR==3.2.3 plotly open3d
 ```
 
-### Download sample datasets
+**Optional**: We use Nvidia ncore library to preprocess (mostly for sensor and motion compensation handling) our internal Lidar data. If you have access to it, please run:
+```bash
+export YOUR_TOKEN=xxxx
+pip install ncore --extra-index-url https://__token__:${YOUR_TOKEN}@gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
+```
+Please note that you **don't** need this dependency to run the tokenizer and diffusion model training and inference if you already have your own data processed.
+
+### Dataset Preparation
+
+#### Sample Dataset
+
+To get started quickly, download our sample dataset from Hugging Face:
+
 1. Generate a [Hugging Face](https://huggingface.co/settings/tokens) access token (if you haven't done so already). Set the access token to `Read` permission (default is `Fine-grained`).
 
 2. Log in to Hugging Face with the access token:
    ```bash
    huggingface-cli login
    ```
-3. Download the sample dataset
-    ```
-    from huggingface_hub import snapshot_download
-    snapshot_download(repo_id="nvidia/Cosmos-Transfer-LidarGen-Example",local_dir="datasets",repo_type="dataset")
-    ```
-4. To create your own datasets, please refer to our [reference script](../cosmos-drive-dreams-toolkits/convert_lidar_pointcloud_to_rangemap.py) to convert raw lidar point cloud to range map data. 
+
+3. Download the sample dataset:
+   ```python
+   from huggingface_hub import snapshot_download
+   snapshot_download(repo_id="nvidia/Cosmos-Transfer-LidarGen-Example",local_dir="datasets",repo_type="dataset")
+   ```
+
+#### Dataset Format
+
+Your dataset must be organized in the following structure for post-training:
+
+```
+datasets/lidar_dataset_release/
+├── metadata/
+│   └── *.npz                           # LiDAR metadata files
+├── lidar/
+│   └── *.tar                           # LiDAR point cloud data (tar archives)
+├── pose/
+│   └── *.tar                           # Camera pose information
+├── ftheta_intrinsic/
+│   └── *.tar                           # Camera intrinsic parameters
+├── ftheta_camera_front_wide_120fov/
+│   └── *.mp4                           # Front camera videos
+├── ftheta_camera_rear_left_70fov/
+│   └── *.mp4                           # Rear left camera videos
+└── ftheta_camera_rear_right_70fov/
+    └── *.mp4                           # Rear right camera videos
+```
+
+**Key Requirements:**
+- **LiDAR Tokenizer Training**: Requires only `metadata/` and `lidar/` directories
+- **Diffusion Model Training**: Requires all directories (synchronized multi-view RGB images, camera poses, intrinsics, and LiDAR data)
+- **Recommended Dataset Size**: 100,000+ synchronized RGB-LiDAR clips (20 sec / each) for optimal results
+- **Calibration**: Accurate camera-LiDAR calibration is crucial for quality results
+
+#### Creating Custom Datasets
+
+To convert your own raw LiDAR point cloud data into our format, please refer to our [reference script](../cosmos-drive-dreams-toolkits/convert_lidar_pointcloud_to_rangemap.py). 
 
 ## LiDAR Tokenizer
 

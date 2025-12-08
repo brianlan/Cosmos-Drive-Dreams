@@ -4,9 +4,11 @@
 
 The Cosmos-Transfer-LidarGen diffusion model enables 3-view RGB image to LiDAR point cloud generation. This model takes multi-view RGB images as input and generates corresponding LiDAR range maps, bridging the gap between visual perception and 3D spatial understanding.
 
-### Environment setup
+### Prerequisites
 
-Please refer to [lidar_tokenizer.md](lidar_tokenizer.md) for instructions on environment setup.
+Please refer to [README.md](../README.md) for:
+- Environment setup and installation instructions
+- Dataset preparation and format requirements
 
 ### Model Support Matrix
 
@@ -36,30 +38,7 @@ We support the following Cosmos-Transfer-LidarGen models for post-training and i
 
 ## Post-training Cosmos-Transfer-LidarGen Models
 
-Post-training a Cosmos-Transfer-LidarGen model allows you to fine-tune the model for your specific multi-view RGB to LiDAR generation use cases.
-
-### Dataset Preparation
-
-You must provide synchronized multi-view RGB images and LiDAR point cloud data in a compatible format. Please check our conversion [script](../cosmos-drive-dreams-toolkits/convert_lidar_pointcloud_to_rangemap.py) for reference. The dataset should be organized as follows:
-
-```
-datasets/lidar_dataset_release/
-├── metadata/
-│   └── *.npz                           # LiDAR metadata files
-├── lidar/
-│   └── *.tar                           # LiDAR point cloud data
-├── pose/
-│   └── *.tar                          # Camera pose information
-├── ftheta_intrinsic/
-│   └── *.tar                          # Camera intrinsic parameters
-├── ftheta_camera_front_wide_120fov/
-│   └── *.mp4                           # Front camera videos
-├── ftheta_camera_rear_left_70fov/
-│   └── *.mp4                           # Rear left camera videos
-└── ftheta_camera_rear_right_70fov/
-    └── *.mp4                           # Rear right camera videos
-
-```
+Post-training a Cosmos-Transfer-LidarGen model allows you to fine-tune the model for your specific multi-view RGB to LiDAR generation use cases. Please ensure you have prepared your dataset according to the format described in [README.md](../README.md#dataset-preparation).
 
 ### Post-training Configuration
 
@@ -161,8 +140,3 @@ The Cosmos-Transfer-LidarGen diffusion model is built on the following architect
 
 - **Memory Issues**: 
   - Ensure sufficient GPU memory (recommend 80GB+ per GPU)
-
-- **Dataset Requirements**
-    - Dataset Size: 100,000+ synchronized RGB-LiDAR clips (20 sec / each) are recommended
-    - View Coverage: Ensure good coverage of different scenarios and environments
-    - Calibration: Accurate camera-LiDAR calibration is crucial for quality results

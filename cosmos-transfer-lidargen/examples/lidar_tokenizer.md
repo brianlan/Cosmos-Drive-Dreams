@@ -1,22 +1,10 @@
 ## Post-training and Inference with Lidar Tokenizer Models
 
-### Environment setup
+### Prerequisites
 
-Please refer to the Inference section of [INSTALL.md](/INSTALL.md#inference) for instructions on environment setup. Note that in addition to the post-training requirements, you'll also need to install the following libraries:
-
-```bash
-# required for plotly
-apt-get -y install libnss3 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libxkbcommon0 libpango-1.0-0 libcairo2
-plotly_get_chrome
-# additional libs
-pip install jaxtyping kaleido pyquaternion av lru-dict OpenEXR==3.2.3 plotly open3d
-```
-We use Nvidia ncore library to preprocess (mostly for sensor and motion compensation handling) our internal Lidar data, if you have access to it, please run
-```bash
-export YOUR_TOKEN=xxxx
-pip install ncore --extra-index-url https://__token__:${YOUR_TOKEN}@gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
-```
-Please note that you **don't** need this dependency to run the tokenizer and diffusion model training and inference if you already have your own data processed. 
+Please refer to [README.md](../README.md) for:
+- Environment setup and installation instructions
+- Dataset preparation and format requirements 
 
 ### Model Support Matrix
 
@@ -63,23 +51,7 @@ checkpoints/
 
 ## Post-training Lidar Tokenizers
 
-Post-training a Cosmos Lidar Tokenizer allows you to fine-tune the model for your specific lidar point cloud use cases.
-
-### Dataset Preparation
-
-You must provide lidar point cloud data in a compatible format, please check [cosmos-lidar-preprocessing-release
-](https://gitlab-master.nvidia.com/shengyuh/cosmos-lidar-preprocessing-release) for lidar preprocessing.
-
-For example, you can use lidar datasets with the following structure:
-```
-datasets/lidar_dataset_release/
-├── metadata/
-│   └── *.npz
-└── lidar/
-    └── *.tar
-```
-
-Each tar file should contain point cloud data that can be processed by the lidar tokenizer.
+Post-training a Cosmos Lidar Tokenizer allows you to fine-tune the model for your specific lidar point cloud use cases. Please ensure you have prepared your dataset according to the format described in [README.md](../README.md#dataset-preparation).
 
 ### Post-training Configuration
 
