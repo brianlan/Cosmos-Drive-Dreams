@@ -158,3 +158,18 @@ Does Multiview expansion require the original multiview images (like back, left_
   - 时间：121帧@24fps，模型保证帧间连续性
   - 空间：通过pose约束保证多视图几何一致性
   - 动态物体：Bbox插值 + 运动补偿
+
+Who / which process does the 3D object boxes interpolation? Is the interpolation makes the 3D boxes actually 30Hz data rather than duplicates of the 10Hz/2Hz data?
+---
+During conversion we call utils.bbox_utils.interpolate_bbox() on the all_object_info stream before writing it to
+  all_object_info/<clip>.tar. That function is where the interpolation happens: it takes the sparse keyframe annotations
+  (2 Hz or 10 Hz depending on the source), aligns them to the duplicated 30 FPS pose timeline, and linearly interpolates the  SE(3) pose / size / moving flag for every intermediate frame. So the box tracks in all_object_info actually have 30‑Hz
+  samples after conversion; they’re not simply duplicated copies of the original keyframes.
+
+It comes as part of this repository. utils/bbox_utils.py lives under cosmos-drive-dreams-toolkits/ and ships with the rest  of the Cosmos tooling. So the interpolation logic is authored/maintained by the Cosmos-Drive-Dreams team (the same
+  codebase you’re using), not by Ruqi.
+
+Why we don't interpolate the ego car pose from 10Hz/2Hz to 30Hz as well? Does cosmos provide this kind of utils?
+---
+Cosmos doesn’t supply an ego-pose interpolator (there’s no equivalent helper to interpolate_bbox), so the converter simply  duplicates each 10 Hz pose three times to satisfy the “pose files contain 30 FPS entries” expectation that Cosmos
+  renderers hard-code. That’s why you see the same SE(3) matrix repeated for frames t*3, t*3+1, t*3+2. Implementing a proper  SE(3) interpolation would be straightforward (slerp on rotation + linear translation), but it isn’t built into the current  toolkit. If we need truly smooth 30 FPS ego motion we’d have to add that ourselves.

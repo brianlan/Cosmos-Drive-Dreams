@@ -89,24 +89,40 @@ def transform_points(mat: np.ndarray, pts: np.ndarray) -> np.ndarray:
     return (mat[:3, :3] @ pts.T + mat[:3, 3:4]).T
 
 
-def derive_image_size(first_frame: dict, data_root: Path) -> Tuple[int, int]:
-    """Read the first available image to get (width, height)."""
-    cam_entry = next(iter(first_frame["camera_image"].values()))
-    img_rel = cam_entry["path"]
-    img_path = (data_root / img_rel).resolve()
-    with Image.open(img_path) as im:
-        w, h = im.size
-    return w, h
+def derive_camera_resolutions(first_frame: dict, data_root: Path) -> Dict[str, Tuple[int, int]]:
+    """Read one frame per camera to get each sensor's (width, height)."""
+    resolutions: Dict[str, Tuple[int, int]] = {}
+    for cam, cam_entry in first_frame.get("camera_image", {}).items():
+        img_rel = cam_entry["path"]
+        img_path = (data_root / img_rel).resolve()
+        try:
+            with Image.open(img_path) as im:
+                resolutions[cam] = im.size
+        except FileNotFoundError:
+            continue
+    if not resolutions:
+        raise RuntimeError("Unable to determine any camera resolutions from first frame")
+    return resolutions
 
 
 def build_intrinsics_sample(
-    clip_id: str, scene_info: dict, resolution: Tuple[int, int]
+    clip_id: str, scene_info: dict, camera_resolutions: Dict[str, Tuple[int, int]]
 ) -> dict:
     """Create pinhole_intrinsic sample dict."""
-    w, h = resolution
     sample = {"__key__": clip_id}
+    default_resolution = next(iter(camera_resolutions.values()))
     for cam, calib in scene_info["calibration"].items():
-        fx, fy, cx, cy = map(float, calib["intrinsic"])
+        w, h = camera_resolutions.get(cam, default_resolution)
+        fx_raw, fy_raw, cx_raw, cy_raw = map(float, calib["intrinsic"])
+
+        # Some Ruqi calibrations store (cx, cy, fx, fy); detect and swap.
+        fx, fy, cx, cy = fx_raw, fy_raw, cx_raw, cy_raw
+        if cx_raw > 1.5 * w or cy_raw > 1.5 * h:
+            # If the first two numbers are within the image bounds while the
+            # last two are wildly outside, treat them as (cx, cy, fx, fy).
+            if fx_raw <= 1.5 * w and fy_raw <= 1.5 * h:
+                cx, cy, fx, fy = fx_raw, fy_raw, cx_raw, cy_raw
+
         sample[f"pinhole_intrinsic.{cam}.npy"] = np.array(
             [fx, fy, cx, cy, w, h], dtype=np.float32
         )
@@ -165,22 +181,36 @@ def convert_scene(
     frame_index_lookup = {k: i for i, k in enumerate(frame_keys)}
     selected_keys = frame_keys[:: max(1, keyframe_stride)]
     first_frame = scene["frame_info"][frame_keys[0]]
-    resolution = derive_image_size(first_frame, data_root)
+
+    # Auto-adjust data_root if the user pointed at the scene folder instead of the dataset root.
+    def maybe_fix_data_root(current_root: Path) -> Path:
+        cam_entry = next(iter(first_frame["camera_image"].values()))
+        rel_path = cam_entry["path"]
+        path = (current_root / rel_path).resolve()
+        if path.exists():
+            return current_root
+        alt_root = current_root.parent
+        alt_path = (alt_root / rel_path).resolve()
+        if alt_path.exists():
+            return alt_root
+        return current_root
+
+    data_root = maybe_fix_data_root(data_root)
+    camera_resolutions = derive_camera_resolutions(first_frame, data_root)
     anchor_translation = np.asarray(first_frame["ego_pose"]["translation"], dtype=np.float32)
 
     # Prepare intrinsic tar
-    intrinsic_sample = build_intrinsics_sample(clip_id, scene["scene_info"], resolution)
+    intrinsic_sample = build_intrinsics_sample(clip_id, scene["scene_info"], camera_resolutions)
     write_to_tar(intrinsic_sample, output_root / "pinhole_intrinsic" / f"{clip_id}.tar")
 
     # Precompute camera-to-ego transforms
     cam_to_ego: Dict[str, np.ndarray] = {}
     for cam, calib in scene["scene_info"]["calibration"].items():
-        # Ruqi extrinsic appears to be ego->cam; invert to get cam->ego as expected by renderer
-        ego_to_cam = make_se3(
+        # Ruqi extrinsics already provide sensor->ego, so compose directly with ego poses
+        cam_to_ego[cam] = make_se3(
             np.asarray(calib["extrinsic"][0], dtype=np.float32),
             np.asarray(calib["extrinsic"][1], dtype=np.float32),
         )
-        cam_to_ego[cam] = np.linalg.inv(ego_to_cam)
 
     pose_sample = {"__key__": clip_id}
     vehicle_pose_sample = {"__key__": clip_id}
