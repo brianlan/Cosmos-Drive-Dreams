@@ -198,6 +198,14 @@ def prepare_output(
         print(f"Resizing {clip_id} {render_name} video from {full_video.shape[1]}x{full_video.shape[2]} to {resize_resolution[1]}x{resize_resolution[0]}...")
         full_video = np.stack([cv2.resize(frame, resize_resolution, interpolation=cv2.INTER_LANCZOS4) for frame in full_video], axis=0)
 
+    # Pad short clips so we can still emit a chunk (useful for datasets with fewer than TARGET_CHUNK_FRAME frames)
+    if full_video.shape[0] < TARGET_CHUNK_FRAME:
+        pad_count = TARGET_CHUNK_FRAME - full_video.shape[0]
+        if pad_count > 0:
+            pad_frames = np.repeat(full_video[-1:, ...], pad_count, axis=0)
+            full_video = np.concatenate([full_video, pad_frames], axis=0)
+            render_frame_ids = list(render_frame_ids) + [render_frame_ids[-1]] * pad_count
+
     if cosmos_resolution != resize_resolution:
         if to_cosmos_resolution == 'resize':
             target_w, target_h = cosmos_resolution
@@ -223,7 +231,7 @@ def prepare_output(
             output_root_p / render_name / camera_folder_name / f"{clip_id}_{cur_idx}.mp4",
             fps=TARGET_RENDER_FPS,
             codec="libx264",
-            macro_block_size=None,  # This makes sure num_frames is correct (by default it is rounded to 16x).
+            format="FFMPEG",
             ffmpeg_params=[
                 "-crf", "18",     # Lower CRF for higher quality (0-51, lower is better)
                 "-preset", "slow",   # Slower preset for better compression/quality

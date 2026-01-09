@@ -283,10 +283,15 @@ if __name__ == "__main__":
             
         for variation in data.keys():
             prompt = data[variation]
-            hdmap = os.path.join(data_path, "hdmap", "ftheta_camera_front_wide_120fov", f"{sample_name}_0.mp4")
-            # make sure the file exists
-            if not os.path.exists(hdmap):
-                print(f"hdmap file {hdmap} does not exist")
+            # Allow both ftheta and pinhole; prefer ftheta if present, else pinhole.
+            hdmap_ftheta = os.path.join(data_path, "hdmap", "ftheta_camera_front_wide_120fov", f"{sample_name}_0.mp4")
+            hdmap_pinhole = os.path.join(data_path, "hdmap", "pinhole_front_wide", f"{sample_name}_0.mp4")
+            if os.path.exists(hdmap_ftheta):
+                hdmap = hdmap_ftheta
+            elif os.path.exists(hdmap_pinhole):
+                hdmap = hdmap_pinhole
+            else:
+                print(f"hdmap file {hdmap_ftheta} or {hdmap_pinhole} does not exist")
                 continue
 
             if "lidar" in control_inputs.keys():
