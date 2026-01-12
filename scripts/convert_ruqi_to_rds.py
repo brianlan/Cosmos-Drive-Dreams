@@ -160,13 +160,119 @@ def polyline_class_to_layer(poly_cls: str) -> str | None:
     return None
 
 
-def duplicate_frames_to_30fps(num_src_frames: int) -> List[int]:
-    """Return list of target frame indices at 30 FPS."""
-    target = []
-    for i in range(num_src_frames):
-        base = i * 3
-        target.extend([base, base + 1, base + 2])
-    return target
+def rotmat_to_quat(rotation: np.ndarray) -> np.ndarray:
+    """Convert rotation matrix to (x, y, z, w) quaternion."""
+    r = rotation.astype(np.float64)
+    trace = np.trace(r)
+    if trace > 0:
+        s = 0.5 / np.sqrt(trace + 1.0)
+        w = 0.25 / s
+        x = (r[2, 1] - r[1, 2]) * s
+        y = (r[0, 2] - r[2, 0]) * s
+        z = (r[1, 0] - r[0, 1]) * s
+    else:
+        idx = np.argmax(np.diag(r))
+        if idx == 0:
+            s = 2.0 * np.sqrt(1.0 + r[0, 0] - r[1, 1] - r[2, 2])
+            x = 0.25 * s
+            y = (r[0, 1] + r[1, 0]) / s
+            z = (r[0, 2] + r[2, 0]) / s
+            w = (r[2, 1] - r[1, 2]) / s
+        elif idx == 1:
+            s = 2.0 * np.sqrt(1.0 + r[1, 1] - r[0, 0] - r[2, 2])
+            x = (r[0, 1] + r[1, 0]) / s
+            y = 0.25 * s
+            z = (r[1, 2] + r[2, 1]) / s
+            w = (r[0, 2] - r[2, 0]) / s
+        else:
+            s = 2.0 * np.sqrt(1.0 + r[2, 2] - r[0, 0] - r[1, 1])
+            x = (r[0, 2] + r[2, 0]) / s
+            y = (r[1, 2] + r[2, 1]) / s
+            z = 0.25 * s
+            w = (r[1, 0] - r[0, 1]) / s
+    quat = np.array([x, y, z, w], dtype=np.float64)
+    quat /= np.linalg.norm(quat) + 1e-12
+    return quat
+
+
+def quat_to_rotmat(quat: np.ndarray) -> np.ndarray:
+    x, y, z, w = quat
+    xx, yy, zz = x * x, y * y, z * z
+    xy, xz, yz = x * y, x * z, y * z
+    wx, wy, wz = w * x, w * y, w * z
+    rot = np.array(
+        [
+            [1 - 2 * (yy + zz), 2 * (xy - wz), 2 * (xz + wy)],
+            [2 * (xy + wz), 1 - 2 * (xx + zz), 2 * (yz - wx)],
+            [2 * (xz - wy), 2 * (yz + wx), 1 - 2 * (xx + yy)],
+        ],
+        dtype=np.float32,
+    )
+    return rot
+
+
+def slerp(q0: np.ndarray, q1: np.ndarray, fraction: float) -> np.ndarray:
+    """Spherical linear interpolation between two quaternions."""
+    dot = np.dot(q0, q1)
+    if dot < 0.0:
+        q1 = -q1
+        dot = -dot
+    dot = np.clip(dot, -1.0, 1.0)
+    if dot > 0.9995:
+        result = q0 + fraction * (q1 - q0)
+        result /= np.linalg.norm(result) + 1e-12
+        return result
+    theta_0 = np.arccos(dot)
+    sin_theta_0 = np.sin(theta_0)
+    theta = theta_0 * fraction
+    sin_theta = np.sin(theta)
+    s0 = np.sin(theta_0 - theta) / sin_theta_0
+    s1 = sin_theta / sin_theta_0
+    return s0 * q0 + s1 * q1
+
+
+def interpolate_ego_poses(ego_pose_list: List[np.ndarray]) -> Tuple[List[np.ndarray], List[List[int]]]:
+    """Interpolate 10 FPS ego poses to 30 FPS using SLERP + linear translation."""
+    if not ego_pose_list:
+        return [], []
+
+    result: List[np.ndarray] = []
+    mapping: List[List[int]] = [[] for _ in ego_pose_list]
+    num_src = len(ego_pose_list)
+    fractions = (1.0 / 3.0, 2.0 / 3.0)
+
+    for src_idx in range(num_src - 1):
+        pose = ego_pose_list[src_idx]
+        result.append(pose)
+        mapping[src_idx].append(len(result) - 1)
+
+        rot0 = pose[:3, :3]
+        rot1 = ego_pose_list[src_idx + 1][:3, :3]
+        quat0 = rotmat_to_quat(rot0)
+        quat1 = rotmat_to_quat(rot1)
+        t0 = pose[:3, 3]
+        t1 = ego_pose_list[src_idx + 1][:3, 3]
+
+        for frac in fractions:
+            quat_interp = slerp(quat0, quat1, frac)
+            rot_interp = quat_to_rotmat(quat_interp)
+            t_interp = (1 - frac) * t0 + frac * t1
+            mat = np.eye(4, dtype=np.float32)
+            mat[:3, :3] = rot_interp
+            mat[:3, 3] = t_interp.astype(np.float32)
+            result.append(mat)
+            mapping[src_idx].append(len(result) - 1)
+
+    # Append final source pose
+    result.append(ego_pose_list[-1])
+    mapping[-1].append(len(result) - 1)
+
+    # Pad last pose to maintain 3x duplication for the final frame
+    for _ in range(2):
+        result.append(ego_pose_list[-1])
+        mapping[-1].append(len(result) - 1)
+
+    return result, mapping
 
 
 def convert_scene(
@@ -176,9 +282,9 @@ def convert_scene(
     clip_id: str,
     data_root: Path,
     keyframe_stride: int = 1,
+    interpolate_ego_pose: bool = False,
 ) -> None:
     frame_keys = sorted(scene["frame_info"].keys())
-    frame_index_lookup = {k: i for i, k in enumerate(frame_keys)}
     selected_keys = frame_keys[:: max(1, keyframe_stride)]
     first_frame = scene["frame_info"][frame_keys[0]]
 
@@ -216,49 +322,56 @@ def convert_scene(
     vehicle_pose_sample = {"__key__": clip_id}
     all_object_info_sample = {"__key__": clip_id}
 
-    # Build 30 FPS timeline by duplicating each 10 FPS frame 3×
-    target_frame_ids = duplicate_frames_to_30fps(len(frame_keys))
-
-    for src_idx, frame_key in enumerate(frame_keys):
+    ego_pose_list: List[np.ndarray] = []
+    for frame_key in frame_keys:
         frame = scene["frame_info"][frame_key]
         ego_pose = make_se3(
             np.asarray(frame["ego_pose"]["rotation"], dtype=np.float32),
             np.asarray(frame["ego_pose"]["translation"], dtype=np.float32) - anchor_translation,
         )
+        ego_pose_list.append(ego_pose)
 
-        for offset, tgt_frame_id in enumerate(target_frame_ids[src_idx * 3 : src_idx * 3 + 3]):
-            # vehicle pose
-            vehicle_pose_sample[
-                f"{tgt_frame_id:06d}.vehicle_pose.npy"
-            ] = ego_pose.astype(np.float32)
+    if interpolate_ego_pose:
+        interpolated_ego_poses, src_to_target_indices = interpolate_ego_poses(ego_pose_list)
+    else:
+        interpolated_ego_poses = []
+        src_to_target_indices = []
+        for pose in ego_pose_list:
+            start_idx = len(interpolated_ego_poses)
+            interpolated_ego_poses.extend([pose.copy(), pose.copy(), pose.copy()])
+            src_to_target_indices.append([start_idx, start_idx + 1, start_idx + 2])
 
-            # camera poses
-            for cam, cam_2_ego in cam_to_ego.items():
-                cam_to_world = ego_pose @ cam_2_ego
-                pose_sample[
-                    f"{tgt_frame_id:06d}.pose.{cam}.npy"
-                ] = cam_to_world.astype(np.float32)
+    for tgt_idx, ego_pose in enumerate(interpolated_ego_poses):
+        vehicle_pose_sample[f"{tgt_idx:06d}.vehicle_pose.npy"] = ego_pose.astype(np.float32)
 
-            # all object info: only keep selected (key) frames to reflect trustworthy annotations
-            if frame_key in selected_keys:
-                object_info_this_frame: Dict[str, dict] = {}
-                for box in frame["3d_boxes"]:
-                    track_id = str(box.get("track_id", -1))
-                    R_box = np.asarray(box["rotation"], dtype=np.float32)
-                    t_box = np.asarray(box["translation"], dtype=np.float32)
-                    box_in_ego = make_se3(R_box, t_box)
-                    box_in_world = ego_pose @ box_in_ego
-                    velocity = np.asarray(box.get("velocity", [0, 0, 0]), dtype=np.float32)
-                    object_info_this_frame[track_id] = {
-                        "object_to_world": box_in_world.tolist(),
-                        "object_lwh": list(box.get("size", [0, 0, 0])),
-                        "object_is_moving": bool(np.linalg.norm(velocity[:2]) > 0.1),
-                        "object_type": box_class_to_object_type(box.get("class", "")),
-                    }
+        for cam, cam_2_ego in cam_to_ego.items():
+            cam_to_world = ego_pose @ cam_2_ego
+            pose_sample[f"{tgt_idx:06d}.pose.{cam}.npy"] = cam_to_world.astype(np.float32)
 
-                all_object_info_sample[
-                    f"{tgt_frame_id:06d}.all_object_info.json"
-                ] = object_info_this_frame
+    for src_idx, frame_key in enumerate(frame_keys):
+        if frame_key not in selected_keys:
+            continue
+        frame = scene["frame_info"][frame_key]
+        ego_pose = ego_pose_list[src_idx]
+        object_info_this_frame: Dict[str, dict] = {}
+        for box in frame["3d_boxes"]:
+            track_id = str(box.get("track_id", -1))
+            R_box = np.asarray(box["rotation"], dtype=np.float32)
+            t_box = np.asarray(box["translation"], dtype=np.float32)
+            box_in_ego = make_se3(R_box, t_box)
+            box_in_world = ego_pose @ box_in_ego
+            velocity = np.asarray(box.get("velocity", [0, 0, 0]), dtype=np.float32)
+            object_info_this_frame[track_id] = {
+                "object_to_world": box_in_world.tolist(),
+                "object_lwh": list(box.get("size", [0, 0, 0])),
+                "object_is_moving": bool(np.linalg.norm(velocity[:2]) > 0.1),
+                "object_type": box_class_to_object_type(box.get("class", "")),
+            }
+
+        for tgt_frame_id in src_to_target_indices[src_idx]:
+            all_object_info_sample[
+                f"{tgt_frame_id:06d}.all_object_info.json"
+            ] = object_info_this_frame
 
     write_to_tar(pose_sample, output_root / "pose" / f"{clip_id}.tar")
     write_to_tar(vehicle_pose_sample, output_root / "vehicle_pose" / f"{clip_id}.tar")
@@ -429,6 +542,18 @@ def main():
         help="Use every Nth frame for trusted annotations/LiDAR (e.g., 5 if labels are 2Hz and images 10Hz).",
     )
     parser.add_argument(
+        "--interpolate-ego-pose",
+        action="store_true",
+        default=True,
+        help="Interpolate ego poses to 30 FPS using SLERP + linear translation (default: enabled).",
+    )
+    parser.add_argument(
+        "--no-interpolate-ego-pose",
+        action="store_false",
+        dest="interpolate_ego_pose",
+        help="Disable ego-pose interpolation and fall back to frame duplication.",
+    )
+    parser.add_argument(
         "--clip-id",
         type=str,
         default=None,
@@ -448,7 +573,15 @@ def main():
 
     data_root = args.data_root or args.src_pkl.parent.parent
 
-    convert_scene(scene_id, scene, dst_root, clip_id, data_root, keyframe_stride=args.keyframe_stride)
+    convert_scene(
+        scene_id,
+        scene,
+        dst_root,
+        clip_id,
+        data_root,
+        keyframe_stride=args.keyframe_stride,
+        interpolate_ego_pose=args.interpolate_ego_pose,
+    )
     print(f"[OK] Converted {scene_id} -> {dst_root}")
 
 

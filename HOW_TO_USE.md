@@ -24,6 +24,7 @@ python scripts/convert_ruqi_to_rds.py \
 * `--clip-id`: name to use for all `.tar` files (usually same as scene ID).  
 * `--data-root`: base path to resolve image/LiDAR files referenced in the pickle. If you pass the scene folder itself (e.g., `/ssd5/.../scenes/ABC1_1735885669`), the converter automatically adjusts one level up so the relative paths resolve.  
 * `--keyframe-stride`: use only every N‑th frame for “trusted” annotations (3D boxes, LiDAR). With Ruqi, 5 matches the 2 Hz labeled keyframes.
+* `--interpolate-ego-pose / --no-interpolate-ego-pose`: interpolate ego poses to 30 FPS with SLERP (default) or fall back to simple duplication.
 
 The converter also handles Ruqi-specific quirks:
 
