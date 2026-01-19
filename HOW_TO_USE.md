@@ -50,23 +50,259 @@ USE_RAY=False PYTHONPATH=. python render_from_rds_hq.py \
 
 **Flag details**
 
-* `-i / --input_root`: the clip’s RDS-HQ folder (the converter’s `output-root/clip-id`).  
-* `-o / --output_root`: where to store the rendered videos.  
-* `-cj`: clip list. You can pass a single ID (as above), a JSON file containing a list, or omit to render all clips.  
-* `-d`: dataset configuration. Use `ruqi` to pick up the Ruqi camera set and FPS.  
-* `-c`: camera model (`pinhole` for Ruqi).  
+* `-i / --input_root`: the clip's RDS-HQ folder (the converter's `output-root/clip-id`).
+* `-o / --output_root`: where to store the rendered videos.
+* `-cj`: clip list. You can pass a single ID (as above), a JSON file containing a list, or omit to render all clips.
+* `-d`: dataset configuration. Use `ruqi` to pick up the Ruqi camera set and FPS.
+* `-c`: camera model (`pinhole` for Ruqi).
 * `-s lidar`, `-s world_scenario`: optional skips; remove them if you want those modalities too.
 
-The renderer automatically upsamples the 10 Hz pose stream to 30 FPS (Cosmos’ assumption) and uses the per-camera intrinsics derived during conversion. The resulting mp4s end up under `ruqi_render/hdmap/pinhole_<camera_name>/`.
+**Output structure**: Creates `ruqi_render/hdmap/pinhole_<camera>/` directories with rendered `.mp4` files.
+
+The renderer automatically upsamples the 10 Hz pose stream to 30 FPS (Cosmos' assumption) and uses the per-camera intrinsics derived during conversion.
 
 ### Chunk Length / Frame Count
 
-Dataset configs can cap each rendered clip via `TARGET_CHUNK_FRAME` and `MAX_CHUNK` (see `cosmos-drive-dreams-toolkits/config/dataset_ruqi.json`).  
+Dataset configs can cap each rendered clip via `TARGET_CHUNK_FRAME` and `MAX_CHUNK` (see `cosmos-drive-dreams-toolkits/config/dataset_ruqi.json`).
 
-* `TARGET_CHUNK_FRAME` – maximum frames per chunk.  
-* `MAX_CHUNK` – how many chunks to render (`-1` means “no limit”).  
+* `TARGET_CHUNK_FRAME` – maximum frames per chunk.
+* `MAX_CHUNK` – how many chunks to render (`-1` means "no limit").
 
-Set these high enough (e.g., `TARGET_CHUNK_FRAME: 600`, `MAX_CHUNK: -1`) if you want the full 20 s Ruqi clips instead of the default 121-frame segments.
+Set these high enough (e.g., `TARGET_CHUNK_FRAME: 600`, `MAX_CHUNK: -1`) if you want the full 20 s Ruqi clips instead of the default 121-frame segments.
+
+## 2.5. Prepare HD Map Directory for Video Generation
+
+**Important**: There's a naming mismatch between what the rendering produces and what the multi-view generation script expects.
+
+### The Problem
+
+| What Rendering Produces | What Multi-View Script Expects |
+|-------------------------|--------------------------------|
+| `pinhole_front_wide` | `ftheta_camera_front_wide_120fov` |
+| `pinhole_left_front` | `ftheta_camera_cross_left_120fov` |
+| `pinhole_right_front` | `ftheta_camera_cross_right_120fov` |
+| `pinhole_back` | `ftheta_camera_rear_tele_30fov` |
+| `pinhole_left_back` | `ftheta_camera_rear_left_70fov` |
+| `pinhole_right_back` | `ftheta_camera_rear_right_70fov` |
+
+### Solution: Create Symlinks
+
+For each new rendered HD map directory, create symlinks to match the expected naming:
+
+```bash
+# Navigate to your hdmap directory
+cd /data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/ruqi_render/hdmap-chunks
+
+# Create symlinks for expected view names
+ln -s pinhole_front_wide ftheta_camera_front_wide_120fov
+ln -s pinhole_left_front ftheta_camera_cross_left_120fov
+ln -s pinhole_right_front ftheta_camera_cross_right_120fov
+ln -s pinhole_back ftheta_camera_rear_tele_30fov
+ln -s pinhole_left_back ftheta_camera_rear_left_70fov
+ln -s pinhole_right_back ftheta_camera_rear_right_70fov
+```
+
+### Helper Script
+
+Save this as `scripts/prepare_hdmap_for_generation.sh`:
+
+```bash
+#!/bin/bash
+# Helper script to prepare HD map directory for Cosmos video generation
+# Usage: ./prepare_hdmap_for_generation.sh /path/to/hdmap_directory
+
+HDMAP_DIR="${1:-.}"
+
+cd "$HDMAP_DIR" || exit 1
+
+# Mapping of actual directory names to expected names
+declare -A VIEW_MAP=(
+    ["pinhole_front_wide"]="ftheta_camera_front_wide_120fov"
+    ["pinhole_left_front"]="ftheta_camera_cross_left_120fov"
+    ["pinhole_right_front"]="ftheta_camera_cross_right_120fov"
+    ["pinhole_back"]="ftheta_camera_rear_tele_30fov"
+    ["pinhole_left_back"]="ftheta_camera_rear_left_70fov"
+    ["pinhole_right_back"]="ftheta_camera_rear_right_70fov"
+)
+
+echo "Creating symlinks in $HDMAP_DIR..."
+
+for actual in "${!VIEW_MAP[@]}"; do
+    expected="${VIEW_MAP[$actual]}"
+    if [ -d "$actual" ] && [ ! -e "$expected" ]; then
+        ln -s "$actual" "$expected"
+        echo "  Created: $expected -> $actual"
+    elif [ -e "$expected" ]; then
+        echo "  Skipped: $expected already exists"
+    else
+        echo "  Warning: $actual not found"
+    fi
+done
+
+echo "Done!"
+```
+
+Then run:
+```bash
+chmod +x scripts/prepare_hdmap_for_generation.sh
+./scripts/prepare_hdmap_for_generation.sh /data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/ruqi_render/hdmap-chunks
+```
+
+### Update Spec Files
+
+Don't forget to update your `*_spec.json` files to point to the correct HD map paths.
+
+#### Where Are Spec Files Located?
+
+```
+/data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/specs/
+├── single_view_spec.json    # For single-view generation
+└── multi_view_spec.json     # For multi-view generation
+```
+
+#### Step-by-Step: Creating Specs for New hdmap-chunks Data
+
+**Step 1: Create new spec files**
+
+```bash
+cd /data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/specs/
+
+# Copy existing specs as templates
+cp single_view_spec.json single_view_spec_chunks.json
+cp multi_view_spec.json multi_view_spec_chunks.json
+```
+
+**Step 2: Edit `single_view_spec_chunks.json`**
+
+Replace `hdmap/` with `hdmap-chunks/` in the path:
+
+```json
+{
+    "hdmap": {
+        "control_weight": 1,
+        "input_control": "/data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/ruqi_render/hdmap-chunks/pinhole_front_wide/ABC1_1735885669_0.mp4"
+    }
+}
+```
+
+Quick edit with `sed`:
+```bash
+sed 's|/ruqi_render/hdmap/|/ruqi_render/hdmap-chunks/|g' single_view_spec.json > single_view_spec_chunks.json
+```
+
+**Step 3: Edit `multi_view_spec_chunks.json`**
+
+Replace ALL 6 paths (all `hdmap/` → `hdmap-chunks/`):
+
+```json
+{
+    "hdmap": {
+        "control_weight": 1,
+        "input_control": [
+            "/data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/ruqi_render/hdmap-chunks/pinhole_front_wide/ABC1_1735885669_0.mp4",
+            "/data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/ruqi_render/hdmap-chunks/pinhole_left_front/ABC1_1735885669_0.mp4",
+            "/data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/ruqi_render/hdmap-chunks/pinhole_right_front/ABC1_1735885669_0.mp4",
+            "/data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/ruqi_render/hdmap-chunks/pinhole_back/ABC1_1735885669_0.mp4",
+            "/data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/ruqi_render/hdmap-chunks/pinhole_left_back/ABC1_1735885669_0.mp4",
+            "/data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/ruqi_render/hdmap-chunks/pinhole_right_back/ABC1_1735885669_0.mp4"
+        ],
+        "ckpt_path": "nvidia/Cosmos-Transfer1-7B-Sample-AV-Single2MultiView/t2w_hdmap_control.pt"
+    }
+}
+```
+
+Quick edit with `sed`:
+```bash
+sed 's|/ruqi_render/hdmap/|/ruqi_render/hdmap-chunks/|g' multi_view_spec.json > multi_view_spec_chunks.json
+```
+
+#### Create Prompt JSON File
+
+**Location:** `/data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/prompts/`
+
+**Format:**
+
+```json
+{
+    "0": "A daytime scene from the perspective of someone inside a vehicle looking out onto a modern city street..."
+}
+```
+
+**Multiple Variations Example:**
+
+```json
+{
+    "0": "Caption for variation 0 - sunny day",
+    "1": "Caption for variation 1 - rainy day",
+    "2": "Caption for variation 2 - nighttime"
+}
+```
+
+**Key Points:**
+- The key (e.g., `"0"`, `"1"`) becomes part of the output filename: `ABC1_1735885669_0.mp4`
+- The value is your text prompt describing the scene
+- Multi-view will use this prompt for all 6 camera views
+
+**Example: Create a new prompt file**
+
+```bash
+nano /data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/prompts/ABC1_1735885669_chunks.json
+```
+
+Or copy and edit existing:
+```bash
+cp /data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/prompts/ABC1_1735885669.json \
+   /data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/prompts/ABC1_1735885669_chunks.json
+# Then edit the file with your new caption
+```
+
+#### Update Generation Commands
+
+When running with the new specs, update the `--controlnet_specs` argument:
+
+```bash
+# For single-view
+--controlnet_specs /data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/specs/single_view_spec_chunks.json
+
+# For multi-view
+--controlnet_specs /data/datasets/ruqi/scenes-cosmos/ABC1_1735885669/specs/multi_view_spec_chunks.json
+```
+
+The `--caption_path` for multi-view should still point to the `prompts/` directory (which contains all your prompt JSON files).
+
+### Quick Checklist for New Data
+
+| Step | Action | Command/File | Details |
+|------|--------|--------------|---------|
+| 1 | Render HD map videos | `render_from_rds_hq.py` | Output to `ruqi_render/hdmap-chunks/` |
+| 2 | Create symlinks | `./prepare_hdmap_for_generation.sh /path/to/hdmap-chunks` | Creates `ftheta_camera_*` links |
+| 3 | Create new spec files | `cp *.json *_chunks.json` + `sed` to replace paths | Update `hdmap/` → `hdmap-chunks/` |
+| 4 | Create prompt JSON | Edit `prompts/<scene>_chunks.json` | Add your caption text |
+| 5 | Run single-view | `--controlnet_specs specs/single_view_spec_chunks.json` | Output to `single_view_output/` |
+| 6 | Run multi-view | `--controlnet_specs specs/multi_view_spec_chunks.json` | Output to `multi_view_output/` |
+
+### Quick Reference: All Paths for hdmap-chunks
+
+```bash
+# Directory locations
+DATA_ROOT="/data/datasets/ruqi/scenes-cosmos/ABC1_1735885669"
+HDMAP_DIR="$DATA_ROOT/ruqi_render/hdmap-chunks"
+SPECS_DIR="$DATA_ROOT/specs"
+PROMPTS_DIR="$DATA_ROOT/prompts"
+
+# Spec files
+SINGLE_SPEC="$SPECS_DIR/single_view_spec_chunks.json"
+MULTI_SPEC="$SPECS_DIR/multi_view_spec_chunks.json"
+
+# Prompt file
+PROMPT_JSON="$PROMPTS_DIR/ABC1_1735885669_chunks.json"
+
+# Single-view output
+SINGLE_OUTPUT="$DATA_ROOT/single_view_output"
+
+# Multi-view output
+MULTI_OUTPUT="$DATA_ROOT/multi_view_output"
+```
 
 ## 3. Generate Single-View Videos
 
