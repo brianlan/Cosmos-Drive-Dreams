@@ -280,7 +280,18 @@ if __name__ == "__main__":
         sample_name = json_file.split('.')[0]
         with open(os.path.join(caption_path, json_file), 'r') as f:
             data = json.load(f)
-            
+
+        # Validate that this is a prompt file (all values should be strings)
+        is_prompt_file = True
+        for key, value in data.items():
+            if not isinstance(value, str):
+                is_prompt_file = False
+                log.info(f"Skipping {json_file}: not a prompt file (value for '{key}' is {type(value).__name__}, expected str)")
+                break
+
+        if not is_prompt_file:
+            continue
+
         for variation in data.keys():
             prompt = data[variation]
             # Allow both ftheta and pinhole; prefer ftheta if present, else pinhole.
